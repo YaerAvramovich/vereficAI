@@ -1,0 +1,74 @@
+/* Reset and base styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Heebo', sans-serif;
+  background: linear-gradient(
+      to right,
+      rgba(223, 224, 224, 0.53),
+      rgba(0, 122, 204, 0.32)
+    ),
+    url('../img/background.png') no-repeat center center / cover;
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+  text-align: center;
+  min-height: 100vh;
+  min-width: 100%;
+  overflow: auto;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+/* Image grid container */
+#pictures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 30px;
+  padding: 40px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* Individual image styling */
+.picturesOfUs {
+  width: 85%;
+  aspect-ratio: 3/4;
+  object-fit: cover;
+  border-radius: 50%;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  margin: 0 auto;
+}
+
+.picturesOfUs:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+  #pictures {
+    grid-template-columns: repeat(3, 1fr);
+    padding: 30px;
+  }
+}
+
+@media (max-width: 768px) {
+  #pictures {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  #pictures {
+    grid-template-columns: 1fr;
+    padding: 15px;
+  }
+}
