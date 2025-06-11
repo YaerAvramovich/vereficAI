@@ -11,12 +11,12 @@
     />
     <link rel="stylesheet" href="../layout/navbar/navbar.css" />
     <link rel="stylesheet" href="../layout/footer/footer.css" />
-
-    <script defer src="./solution.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="../layout/navbar/navbar.js"></script>
+    <script defer src="./solution.js"></script>
     <script>
       $(function () {
-        $('#header').load('../layout/navbar/navbar.html');
+        $('#header').load('../layout/navbar/navbar.html',);
       });
       $(function () {
         $('#footer').load('../layout/footer/footer.html');
@@ -29,7 +29,7 @@
     <main class="main-content">
       <div class="background-container">
         <div class="content-wrapper">
-          <h1>Enter URL / Text / Picture of Article</h1>
+          <h1 data-translate="enterContent">Enter URL / Text / Picture of Article</h1>
 
           <form id="search-form">
             <div class="search-wrapper">
@@ -40,7 +40,7 @@
                 required
               />
               <button type="submit" title="Search">
-                <i class="fas fa-search"></i> Is this reliable?
+                <i class="fas fa-search"></i> <span data-translate="isReliable">Is this reliable?</span>
               </button>
             </div>
           </form>
@@ -55,9 +55,9 @@
           </div>
 
           <div class="result-boxes" id="results">
-            <div class="box" id="box1">True</div>
-            <div class="box" id="box2">Not sure</div>
-            <div class="box" id="box3">False</div>
+            <div class="box" id="box1" data-translate="true">True</div>
+            <div class="box" id="box2" data-translate="notSure">Not sure</div>
+            <div class="box" id="box3" data-translate="false">False</div>
           </div>
 
           <div id="response-display" class="response-display"></div>
