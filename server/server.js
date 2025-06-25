@@ -1,109 +1,160 @@
 // server/server.js
-const path = require("path");
-const OpenAI = require("openai");
-const express = require("express");
+const path = require('path');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const express = require('express');
+const axios = require('axios');
 const app = express();
-require("dotenv").config({ path: path.join(__dirname, ".env") });
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // 1) Env vars
-const { OPENAI_API_KEY} = process.env;
-const PORT = 5000
-if (!OPENAI_API_KEY) {
-  console.error("❌ Missing OPENAI_API_KEY in .env");
+const { API_KEY, SEARCH_ENGINE_ID } = process.env;
+const PORT = 5000;
+if (!API_KEY || !SEARCH_ENGINE_ID) {
+  console.error(' Missing API_KEY, SEARCH_API_KEY, or SEARCH_ENGINE_ID in .env');
   process.exit(1);
 }
 
-// 2) Crash-guards
-process.on("uncaughtException", (err) =>
-  console.error("❌ Uncaught Exception:", err)
-);
-process.on("unhandledRejection", (reason) =>
-  console.error("❌ Unhandled Rejection:", reason)
-);
+// Crash-guards 
+process.on('uncaughtException', err => console.error(' Uncaught Exception:', err));
+process.on('unhandledRejection', reason => console.error(' Unhandled Rejection:', reason));
 
-// 3) Startup logs
-console.log("⏳ ▶️ server.js loaded");
-console.log("    • __dirname:", __dirname);
-console.log("    • process.cwd():", process.cwd());
-console.log("⚙️ Env vars:", {
-  OPENAI_API_KEY: OPENAI_API_KEY ? "✅ loaded" : "❌ missing",
+console.log('server.js loaded');
+console.log(' __dirname:', __dirname);
+console.log(' process.cwd():', process.cwd());
+console.log(' Env vars:', {
+  API_KEY: API_KEY ? ' loaded' : ' missing',
+  SEARCH_ENGINE_ID: SEARCH_ENGINE_ID ? ' loaded' : ' missing',
 });
 
-// 4) OpenAI v4 client
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+// Google AI client
+const genAI = new GoogleGenerativeAI(API_KEY);
 
-// middleware
+// Middleware 
 app.use(express.json());
 app.use((req, res, next) => {
   const allowedOrigins = [
-    "http://localhost:3000",
-    "http://ec2-16-171-254-122.eu-north-1.compute.amazonaws.com:3000",
-    "http://16.171.254.122:3000",
-    "http://localhost",
-    "http://ec2-16-171-254-122.eu-north-1.compute.amazonaws.com",
-    "http://16.171.254.122",
+    'http://localhost:3000',
+    'http://ec2-16-171-254-122.eu-north-1.compute.amazonaws.com:3000',
+    'http://16.171.254.122:3000',
+    'http://localhost',
+    'http://ec2-16-171-254-122.eu-north-1.compute.amazonaws.com',
+    'http://16.171.254.122',
   ];
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader('Access-Control-Allow-Origin', origin);
   }
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, OPTIONS, PUT, PATCH, DELETE"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "X-Requested-With,content-type"
-  );
-  if (req.method === "OPTIONS") {
-    res.sendStatus(204);
-    return;
-  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS, PUT, PATCH, DELETE');
+  res.setHeader('Access-Control-Allow-Headers','X-Requested-With,content-type');
+  if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
   next();
 });
 
-app.get("/test", (req, res) => {
-  res.json({ message: "Server is running!" });
-})
+app.get('/test', (req, res) => {
+  res.json({ message: 'Server is running!' });
+});
 
-app.post("/chat", async (req, res) => {
+// function to search the web
+async function searchTheWeb(query) {
+    try {
+      console.log(`Searching the web for: "${query}"`);
+      const url = `https://www.googleapis.com/customsearch/v1`;
+      const params = {
+        key: API_KEY,
+        cx: SEARCH_ENGINE_ID,
+        q: query,
+      };
+      const response = await axios.get(url, { params });
+      const searchResults = response.data.items || [];
+      
+      // a function get the date of the search result
+      function extractPublishedDate(item) {
+        try {
+          const metatags = item.pagemap?.metatags?.[0];
+          const rawDate = metatags?.["article:published_time"] || metatags?.["og:updated_time"];
+          if (!rawDate) return null;
+          const date = new Date(rawDate);
+          return isNaN(date.getTime()) ? null : date.toLocaleDateString('en-US');
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // Format the results into a string for the prompt
+      const context = searchResults.slice(0, 5).map(item => {
+        const published = extractPublishedDate(item);
+        return (
+          `Title: ${item.title}\n` +
+          (published ? `Published: ${published}\n` : '') +
+          `Link: ${item.link}\n` +
+          `Snippet: ${item.snippet}\n---`
+        );
+      }).join('\n\n');
+
+
+      console.log('Search context created, length:', context.length);
+      return context;
+    } catch (error) {
+        console.error('Error during web search:', error.response ? error.response.data : error.message);
+        return ''; 
+    }
+}
+
+app.post('/chat', async (req, res) => {
   try {
-    const claim = req.body.question;
-
-    const systemPrompt = `
-      You are a professional fact-checking AI. Your job is to verify if a news claim is TRUE or FALSE.
-      Return your answer in the following format ONLY (in English):
-      1. TRUE or FALSE — as a big title (uppercase)
-      2. Two short sentences explaining why.
-      3. A list of credible sources with URLs (e.g. news, government, or science websites).
-
-      Example output:
-      ---
-      TRUE  
-      The claim is supported by several peer-reviewed studies. Experts in the field have confirmed the accuracy of this information.  
-      Sources:  
-      - https://www.example.com/study  
-      - https://www.example.com/official_report
-      ---
-      Now, verify this claim: "${claim}"
-    `;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "system", content: systemPrompt }],
-    });
-
-    const replyMsg = completion.choices[0].message;
-    console.log("✅ Fact Check Reply:\n", replyMsg.content);
-
-    res.json({ reply: replyMsg });
+      const claim = req.body.question;
+      
+      // Search for real-time information first
+      const searchContext = await searchTheWeb(claim);
+      // Augment the prompt with the search results
+      const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const systemPrompt = `
+        You are a professional fact-checking AI. Your job is to verify whether a specific factual claim is TRUE, FALSE, or UNCERTAIN using ONLY the context provided from recent web search results.
+        
+        Today’s date is ${today}. If the claim is about today's date, (or other future or past dates e.g. 'tomorrow is xx.xx.xxxx', 'one week ago the date was...') compare it directly to this value without needing additional sources.
+        
+        Always use the most recent information available in the context to determine the truth.
+        
+        You may infer a claim to be TRUE or FALSE if the context includes strong indirect evidence that would reasonably support it. For example, if a claim says “X is alive” and recent context refers to them in the present tense, it can be inferred TRUE even if it doesn't say “X is alive” explicitly. This also applies to other claims involving positions, actions, or statuses that are clearly evident from current phrasing.
+        
+        Avoid being overly cautious — if the evidence is indirect but clear and recent, return a confident answer.
+        
+        Only respond with UNCERTAIN if the evidence is missing, outdated, or clearly contradictory. Do not use UNCERTAIN just because the information is indirectly stated or implied — evaluate whether a reasonable person could confidently infer the truth from the context.
+        
+        If multiple sources conflict, resolve contradictions by preferring:
+        1. The most recent publication date, if available.
+        2. Official or highly credible sources (e.g., .gov, .edu, Wikipedia, major news outlets).
+        If the claim is a known conspiracy theory and the context either avoids confirming it or presents it as a myth, you may return **FALSE**.
+        
+        Respond in this EXACT format and *only* in the language that the provided claim are writen in:
+        - the statment is:
+            TRUE, FALSE, or UNCERTAIN — only the TRUE, FALSE or UNCERTAIN in uppercase as the title.
+        - summarry:
+           Two or three short sentences explaining your reasoning based only on the context and the known current date if applicable.
+        - sources: 
+            A list of the sources you used, including their URLs.
+        
+            Do NOT use any outside knowledge. Only use the information from the context or the known current date.
+        Here is the context from recent web search results:
+        --- CONTEXT START ---
+        ${searchContext}
+        --- CONTEXT END ---
+        
+        Now, using only the context above, verify this claim: "${claim}"
+      `;
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite-preview-06-17' });
+      const result = await model.generateContent(systemPrompt);
+      const response = await result.response;
+      const answer = response.text();
+      console.log(' Fact Check Reply:\n', answer);
+      res.json({ reply: answer });
   } catch (err) {
-    console.error("❌ OpenAI error:", err);
-    res.status(500).json({ error: err.message });
+      console.error('error:', err);
+      res.status(500).json({ error: err.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
+  console.log(` Server listening on port ${PORT}`);
 });
